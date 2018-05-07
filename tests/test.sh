@@ -2,52 +2,42 @@
 
 function checksum_test001() {
 for i in 000 001 002 003 010 011 015 027 029 033 200; do
-    mysql -B -e "CHECKSUM TABLE test${i}" test001 | grep -v -i checksum
+    mysql -utravis -B -e "CHECKSUM TABLE test${i}" test001 | grep -v -i checksum
 done
 }
 
 function checksum_test002() {
 for i in 201; do
-    mysql --default-character-set=utf8mb4 -B -e "CHECKSUM TABLE test${i}" test002 | grep -v -i checksum
+    mysql -utravis --default-character-set=utf8mb4 -B -e "CHECKSUM TABLE test${i}" test002 | grep -v -i checksum
 done
 }
 
 function checksum_test005() {
 for i in 000; do
-    mysql -B -e "CHECKSUM TABLE test${i}" test001 | grep -v -i checksum
+    mysql -utravis -B -e "CHECKSUM TABLE test${i}" test001 | grep -v -i checksum
 done
 }
 
-for i in $(seq 0 20) ; do
+for i in $(seq 0 35) ; do
     ret[$i]=0
 done
 
 index=0
 
-mysql -e "CREATE USER 'travis'@'localhost' IDENTIFIED BY '';" 2> /dev/null
-mysql -e "CREATE DATABASE test001;" 2> /dev/null
-mysql -e "CREATE DATABASE test002;" 2> /dev/null
-mysql -e "CREATE DATABASE test005;" 2> /dev/null
-mysql -e "CREATE DATABASE test006a;" 2> /dev/null
-mysql -e "CREATE DATABASE test006b;" 2> /dev/null
-mysql -e "GRANT ALL PRIVILEGES ON test001.* TO 'travis'@'localhost';" 2> /dev/null
-mysql -e "GRANT SELECT ON mysql.proc to 'travis'@'localhost';" 2> /dev/null
-mysql -e "GRANT ALL PRIVILEGES ON test002.* TO 'travis'@'localhost';" 2> /dev/null
-mysql -e "GRANT ALL PRIVILEGES ON test005.* TO 'travis'@'localhost';" 2> /dev/null
-mysql -e "GRANT ALL PRIVILEGES ON test006a.* TO 'travis'@'localhost';" 2> /dev/null
-mysql -e "GRANT ALL PRIVILEGES ON test00ba.* TO 'travis'@'localhost';" 2> /dev/null
-mysql -e "FLUSH PRIVILEGES;" 2> /dev/null
-
-mysql -uroot < test001.src.sql; ret[((index++))]=$?
-mysql -uroot --default-character-set=utf8mb4 < test002.src.sql; ret[((index++))]=$?
-mysql -uroot < test005.src.sql; ret[((index++))]=$?
-mysql -uroot < test006.src.sql; ret[((index++))]=$?
+mysql -utravis < test001.src.sql; ret[((index++))]=$?
+mysql -utravis --default-character-set=utf8mb4 < test002.src.sql; ret[((index++))]=$?
+mysql -utravis < test005.src.sql; ret[((index++))]=$?
+mysql -utravis < test006.src.sql; ret[((index++))]=$?
+mysql -utravis < test008.src.sql; ret[((index++))]=$?
+mysql -utravis < test009.src.sql; ret[((index++))]=$?
+mysql -utravis < test010.src.sql; ret[((index++))]=$?
+mysql -utravis < test011.src.sql; ret[((index++))]=$?
+mysql -utravis < test012.src.sql; ret[((index++))]=$?
 
 checksum_test001 > test001.src.checksum
 checksum_test002 > test002.src.checksum
 checksum_test005 > test005.src.checksum
-
-mysqldump -uroot test001 \
+mysqldump -utravis test001 \
     --no-autocommit \
     --extended-insert=false \
     --hex-blob=true \
@@ -55,7 +45,7 @@ mysqldump -uroot test001 \
     > mysqldump_test001.sql
 ret[((index++))]=$?
 
-mysqldump -uroot test002 \
+mysqldump -utravis test002 \
     --no-autocommit \
     --extended-insert=false \
     --complete-insert=true \
@@ -64,24 +54,33 @@ mysqldump -uroot test002 \
     > mysqldump_test002.sql
 ret[((index++))]=$?
 
-mysqldump -uroot test005 \
+mysqldump -utravis test005 \
     --no-autocommit \
     --extended-insert=false \
     --hex-blob=true \
     > mysqldump_test005.sql
 ret[((index++))]=$?
 
-php test.php
+mysqldump -utravis test012 \
+    --no-autocommit \
+    --extended-insert=false \
+    --hex-blob=true \
+    --events \
+    > mysqldump_test012.sql
 ret[((index++))]=$?
 
-mysql -uroot test001 < mysqldump-php_test001.sql
-ret[((index++))]=$?
-mysql -uroot test002 < mysqldump-php_test002.sql
-ret[((index++))]=$?
-mysql -uroot test005 < mysqldump-php_test005.sql
+php test.php || { echo "ERROR running test.php" && exit -1; }
 ret[((index++))]=$?
 
-mysql -uroot test006b < mysqldump-php_test006.sql
+mysql -utravis test001 < mysqldump-php_test001.sql
+ret[((index++))]=$?
+mysql -utravis test002 < mysqldump-php_test002.sql
+ret[((index++))]=$?
+mysql -utravis test005 < mysqldump-php_test005.sql
+ret[((index++))]=$?
+mysql -utravis test006b < mysqldump-php_test006.sql
+ret[((index++))]=$?
+mysql -utravis test009 < mysqldump-php_test009.sql
 ret[((index++))]=$?
 
 checksum_test001 > mysqldump-php_test001.checksum
@@ -91,12 +90,21 @@ checksum_test005 > mysqldump-php_test005.checksum
 cat test001.src.sql | grep ^INSERT > test001.filtered.sql
 cat test002.src.sql | grep ^INSERT > test002.filtered.sql
 cat test005.src.sql | grep ^INSERT > test005.filtered.sql
+cat test008.src.sql | grep FOREIGN > test008.filtered.sql
+cat test010.src.sql | grep CREATE | grep EVENT > test010.filtered.sql
+cat test011.src.sql | egrep "INSERT|GENERATED" > test011.filtered.sql
 cat mysqldump_test001.sql | grep ^INSERT > mysqldump_test001.filtered.sql
 cat mysqldump_test002.sql | grep ^INSERT > mysqldump_test002.filtered.sql
 cat mysqldump_test005.sql | grep ^INSERT > mysqldump_test005.filtered.sql
+cat mysqldump_test012.sql | grep -E -e '50001 (CREATE|VIEW)' -e '50013 DEFINER' -e 'TRIGGER' | grep -v -e 'TABLE' -e 'CREATE VIEW' > mysqldump_test012.filtered.sql
 cat mysqldump-php_test001.sql | grep ^INSERT > mysqldump-php_test001.filtered.sql
 cat mysqldump-php_test002.sql | grep ^INSERT > mysqldump-php_test002.filtered.sql
 cat mysqldump-php_test005.sql | grep ^INSERT > mysqldump-php_test005.filtered.sql
+cat mysqldump-php_test008.sql | grep FOREIGN > mysqldump-php_test008.filtered.sql
+cat mysqldump-php_test010.sql | grep CREATE | grep EVENT > mysqldump-php_test010.filtered.sql
+cat mysqldump-php_test011a.sql | egrep "INSERT|GENERATED" > mysqldump-php_test011a.filtered.sql
+cat mysqldump-php_test011b.sql | egrep "INSERT|GENERATED" > mysqldump-php_test011b.filtered.sql
+cat mysqldump-php_test012.sql | grep -E -e '50001 (CREATE|VIEW)' -e '50013 DEFINER' -e 'CREATE.*TRIGGER' > mysqldump-php_test012.filtered.sql
 
 diff test001.filtered.sql mysqldump_test001.filtered.sql
 ret[((index++))]=$?
@@ -117,17 +125,47 @@ ret[((index++))]=$?
 
 diff mysqldump_test005.filtered.sql mysqldump-php_test005.filtered.sql
 ret[((index++))]=$?
+
+diff test008.filtered.sql mysqldump-php_test008.filtered.sql
+ret[((index++))]=$?
+
+#test reset-auto-increment
+test009=`cat mysqldump-php_test009.sql | grep -i ENGINE | grep AUTO_INCREMENT`
+if [[ -z $test009 ]]; then ret[((index++))]=0; else ret[((index++))]=1; fi
+
+# test backup events
+diff test010.filtered.sql mysqldump-php_test010.filtered.sql
+ret[((index++))]=$?
+
+# test virtual column support, with simple inserts forced to complete (a) and complete inserts (b)
+diff test011.filtered.sql mysqldump-php_test011a.filtered.sql
+ret[((index++))]=$?
+diff test011.filtered.sql mysqldump-php_test011b.filtered.sql
+ret[((index++))]=$?
+
+# Test create views, events, trigger
+diff mysqldump_test012.filtered.sql mysqldump-php_test012.filtered.sql
+ret[((index++))]=$?
+
+# Make sure we do not find a DEFINER
+! grep 'DEFINER' mysqldump-php_test012_no-definer.sql
+ret[((index++))]=$?
+
 rm *.checksum 2> /dev/null
 rm *.filtered.sql 2> /dev/null
 rm mysqldump* 2> /dev/null
 
 echo "Done $index tests"
 
-total=0
-for i in $(seq 0 20) ; do
-    total=$((${ret[$i]} + $total))
+retvalue=0
+for i in $(seq 0 35) ; do
+    if [[ ${ret[$i]} -ne 0 ]]; then
+        echo "test $i returned ${ret[$i]}"
+        retvalue=${ret[$i]}
+    fi
+    # total=$((${ret[$i]} + $total))
 done
 
-echo "Exiting with code $total"
+echo "Exiting with code $retvalue"
 
-exit $total
+exit $retvalue
